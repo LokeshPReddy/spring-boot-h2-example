@@ -1,0 +1,74 @@
+package com.lokesh.h2example
+import java.io.IOException;
+
+import javax.servlet.FilterChain;
+import javax.servlet.ServletException;
+import javax.servlet.http.HttpServletRequest;
+import javax.servlet.http.HttpServletResponse;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.web.filter.OncePerRequestFilter;
+import org.springframework.web.util.ContentCachingRequestWrapper;
+import org.springframework.web.util.ContentCachingResponseWrapper;
+import org.springframework.web.util.WebUtils;
+
+
+public class RequestResponseLoggingFilter extends OncePerRequestFilter {
+	
+	private static Logger logger = LoggerFactory.getLogger(RequestResponseLoggingFilter.class);
+
+	@Override
+	protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
+			throws IOException, ServletException {
+		if (!(request instanceof ContentCachingRequestWrapper)) {
+			request = new ContentCachingRequestWrapper(request);
+		}
+		ContentCachingResponseWrapper cachingResponse = null;
+		if (!(response instanceof ContentCachingResponseWrapper)) {
+			cachingResponse = new ContentCachingResponseWrapper(response);
+		}
+		try {
+			filterChain.doFilter(request, cachingResponse);
+		} finally {
+			logRequest(request);
+			logResponse(cachingResponse);
+			// must be last line of code executed in this class
+			cachingResponse.copyBodyToResponse();
+		}
+	}
+
+	private void logResponse(HttpServletResponse response) {
+		try {
+		String content = null;
+		ContentCachingResponseWrapper cachingResponse = WebUtils.getNativeResponse(response,
+				ContentCachingResponseWrapper.class);
+		if (cachingResponse != null) {
+			byte[] bytes = cachingResponse.getContentInputStream().readAllBytes();
+			if (bytes != null && bytes.length > 0) {
+				content = new String(bytes, cachingResponse.getCharacterEncoding());
+			}
+		}
+		logger.info("response {} : {}", cachingResponse.getStatus(), content);
+		} catch(Exception e) {
+			logger.info("error logging response" + e.getMessage());
+		}
+	}
+
+	private void logRequest(HttpServletRequest request) {
+		try {
+			String content = null;
+			final ContentCachingRequestWrapper wrapper = WebUtils.getNativeRequest(request, ContentCachingRequestWrapper.class);
+			if (wrapper != null) {
+				final byte[] bytes = wrapper.getContentAsByteArray();
+				if (bytes != null && bytes.length > 0) {
+					content = new String(bytes, wrapper.getCharacterEncoding()).replaceAll("\\r|\\n|\\t", "");
+				}
+			}
+			logger.info("request {} : {}", request.getRequestURI(), content);
+		} catch(Exception e) {
+			logger.info("error logging request" + e.getMessage());
+		}
+	}
+
+}
